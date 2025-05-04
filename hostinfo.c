@@ -1,3 +1,12 @@
+/*
+ * Copyright (c) 2023 Lucas Kafarski
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the conditions of the BSD 3-Clause
+ * License are met.
+ */
+
 #include "hostinfo.h"
 #include <stdio.h>
 #include <stdlib.h>
