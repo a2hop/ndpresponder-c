@@ -7,6 +7,11 @@ on:
       - 'v*'
   workflow_dispatch:
 
+# Add permissions at the top level
+permissions:
+  contents: write
+  packages: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -18,8 +23,7 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential libnl-3-dev libnl-route-3-dev libnl-genl-3-dev pkg-config libpcap-dev libnet1-dev
-
+        sudo apt-get install -y build-essential libnl-3-dev libnl-route-3-dev libnl-genl-3-dev libpcap-dev libnet1-dev
 
     - name: Build project
       run: |
@@ -71,44 +75,31 @@ jobs:
     if: github.ref == 'refs/heads/main'
     
     steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+        
     - name: Download artifacts
       uses: actions/download-artifact@v4
       with:
         name: ndpresponder-artifacts
         
-    - name: Get latest release
+    - name: Find latest release
       id: latest_release
-      uses: octokit/request-action@v2.x
-      with:
-        route: GET /repos/{owner}/{repo}/releases/latest
-        owner: ${{ github.repository_owner }}
-        repo: ${{ github.event.repository.name }}
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        LATEST_RELEASE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          "https://api.github.com/repos/${{ github.repository }}/releases/latest" | \
+          jq -r '.tag_name')
+        echo "latest_tag=$LATEST_RELEASE" >> $GITHUB_OUTPUT
+        echo "Latest release tag: $LATEST_RELEASE"
       continue-on-error: true
       
-    - name: Update latest release with new artifacts
-      if: steps.latest_release.outcome == 'success'
-      uses: actions/github-script@v6
+    - name: Update latest release
+      if: steps.latest_release.outputs.latest_tag != ''
+      uses: softprops/action-gh-release@v1
       with:
-        script: |
-          const fs = require('fs');
-          const releaseId = ${{ steps.latest_release.outputs.data }}.id;
-          
-          // Read the artifact
-          const artifactContent = fs.readFileSync('ndpresponder-linux-amd64.tar.gz');
-          
-          // Upload to the release
-          await github.rest.repos.uploadReleaseAsset({
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            release_id: releaseId,
-            name: 'ndpresponder-linux-amd64.tar.gz',
-            data: artifactContent,
-            headers: {
-              'content-type': 'application/gzip',
-              'content-length': artifactContent.length
-            }
-          });
+        tag_name: ${{ steps.latest_release.outputs.latest_tag }}
+        files: ndpresponder-linux-amd64.tar.gz
+        draft: false
+        prerelease: false
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
