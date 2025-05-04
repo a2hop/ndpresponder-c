@@ -1,0 +1,105 @@
+name: Build and Update Release
+
+on:
+  push:
+    branches: [ main ]
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+# Add permissions at the top level
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential libnl-3-dev libnl-route-3-dev libnl-genl-3-dev libpcap-dev libnet1-dev
+
+    - name: Build project
+      run: |
+        chmod +x build.sh
+        ./build.sh
+        strip ndpresponder || echo "Unable to strip binary"
+        
+    - name: Create artifacts directory
+      run: mkdir -p artifacts
+        
+    - name: Package artifact
+      run: |
+        cp ndpresponder artifacts/
+        cp LICENSE artifacts/ || echo "No LICENSE file found"
+        cp README.md artifacts/ || echo "No README.md file found"
+        cd artifacts && tar -czvf ndpresponder-linux-amd64.tar.gz *
+      
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: ndpresponder-artifacts
+        path: artifacts/ndpresponder-linux-amd64.tar.gz
+        
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    
+    steps:
+    - name: Download artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: ndpresponder-artifacts
+        
+    - name: Create Release
+      id: create_release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: ndpresponder-linux-amd64.tar.gz
+        draft: false
+        prerelease: false
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        
+  update-latest:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+        
+    - name: Download artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: ndpresponder-artifacts
+        
+    - name: Find latest release
+      id: latest_release
+      run: |
+        LATEST_RELEASE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          "https://api.github.com/repos/${{ github.repository }}/releases/latest" | \
+          jq -r '.tag_name')
+        echo "latest_tag=$LATEST_RELEASE" >> $GITHUB_OUTPUT
+        echo "Latest release tag: $LATEST_RELEASE"
+      continue-on-error: true
+      
+    - name: Update latest release
+      if: steps.latest_release.outputs.latest_tag != ''
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ steps.latest_release.outputs.latest_tag }}
+        files: ndpresponder-linux-amd64.tar.gz
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
