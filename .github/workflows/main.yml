@@ -1,0 +1,112 @@
+name: Build and Update Release
+
+on:
+  push:
+    branches: [ main ]
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential libnl-3-dev libnl-route-3-dev libnl-genl-3-dev
+
+    - name: Build project
+      run: |
+        make
+        strip ndpresponder
+        
+    - name: Create artifacts directory
+      run: mkdir -p artifacts
+        
+    - name: Package artifact
+      run: |
+        cp ndpresponder artifacts/
+        cp LICENSE artifacts/ || echo "No LICENSE file found"
+        cp README.md artifacts/ || echo "No README.md file found"
+        cd artifacts && tar -czvf ndpresponder-linux-amd64.tar.gz *
+      
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: ndpresponder-artifacts
+        path: artifacts/ndpresponder-linux-amd64.tar.gz
+        
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    
+    steps:
+    - name: Download artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: ndpresponder-artifacts
+        
+    - name: Create Release
+      id: create_release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: ndpresponder-linux-amd64.tar.gz
+        draft: false
+        prerelease: false
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        
+  update-latest:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Download artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: ndpresponder-artifacts
+        
+    - name: Get latest release
+      id: latest_release
+      uses: octokit/request-action@v2.x
+      with:
+        route: GET /repos/{owner}/{repo}/releases/latest
+        owner: ${{ github.repository_owner }}
+        repo: ${{ github.repository.name }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      continue-on-error: true
+      
+    - name: Update latest release with new artifacts
+      if: steps.latest_release.outcome == 'success'
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const fs = require('fs');
+          const releaseId = ${{ steps.latest_release.outputs.data }}.id;
+          
+          // Read the artifact
+          const artifactContent = fs.readFileSync('ndpresponder-linux-amd64.tar.gz');
+          
+          // Upload to the release
+          await github.rest.repos.uploadReleaseAsset({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            release_id: releaseId,
+            name: 'ndpresponder-linux-amd64.tar.gz',
+            data: artifactContent,
+            headers: {
+              'content-type': 'application/gzip',
+              'content-length': artifactContent.length
+            }
+          });
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
