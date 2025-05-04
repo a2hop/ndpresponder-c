@@ -5,6 +5,10 @@ on:
     branches: [ main ]
     tags:
       - 'v*'
+    paths-ignore:
+      - '**/*.md'
+      - '**/*.MD'
+      - 'docs/**'
   workflow_dispatch:
 
 # Add permissions at the top level
@@ -107,4 +111,3 @@ jobs:
         prerelease: false
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        

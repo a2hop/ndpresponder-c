@@ -1,6 +1,6 @@
 # NDP Responder (C Implementation)
 
-This is a C implementation of an IPv6 Neighbor Discovery Protocol responder. It's a reimplementation of [yoursunny/ndpresponder](https://github.com/yoursunny/ndpresponder) which was originally written in Go.
+It's a C reimplementation of [yoursunny/ndpresponder](https://github.com/yoursunny/ndpresponder) which was originally written in Go.
 
 ## Features
 
@@ -11,8 +11,9 @@ This is a C implementation of an IPv6 Neighbor Discovery Protocol responder. It'
 
 ## Improvements Over Original
 
-- Added extra functionality while maintaining core features
 - Significantly reduced memory usage (from ~75MB to ~5MB)
+- Reduced binary size from 13.5MB to 34kB
+- Added extra functionality while maintaining core features
 - Eliminated bloat for a more efficient implementation
 - Native C implementation for better performance
 
@@ -97,4 +98,3 @@ This implementation uses:
 - netlink for host information gathering
 - system commands to interface with Docker
 
-The implementation follows the original Go program's architecture but is adapted for C.
