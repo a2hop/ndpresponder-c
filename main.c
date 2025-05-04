@@ -68,7 +68,7 @@ static int ip_in_subnet(const struct in6_addr *ip, const struct in6_addr *subnet
     int bytes_to_compare = prefix_len / 8;
     int bits_remaining = prefix_len % 8;
     
-    // Debug output for subnet matching - now conditional
+    // Debug output for subnet matching
     char ip_str[INET6_ADDRSTRLEN];
     char subnet_str[INET6_ADDRSTRLEN];
     inet_ntop(AF_INET6, ip, ip_str, sizeof(ip_str));
@@ -154,7 +154,6 @@ static void process_solicitation(neigh_solicitation_t *ns) {
             if (verbose_mode) {
                 printf("Responding to solicitation for %s from %s\n", target_ip_str, router_ip_str);
             }
-            // No longer printing dots in non-verbose mode
             
             // Skip libnet_write and directly inject the packet using pcap
             if (pcap_inject(pcap_handle, packet, len) < 0) {

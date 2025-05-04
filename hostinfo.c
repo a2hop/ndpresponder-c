@@ -187,9 +187,63 @@ int hostinfo_ensure_gateway_neigh(const char *interface, host_info_t *hi) {
         printf("Warning: ping to gateway %s failed with code %d\n", gw_str, ret);
     }
     
-    // In a full implementation, we'd use netlink to set the neighbor entry to NOARP
-    // For simplicity, we'll just report that we did it
-    printf("Set gateway neighbor entry to NOARP\n");
+    // Use netlink to set the neighbor entry to NOARP
+    int sock = socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
+    if (sock < 0) {
+        perror("Failed to open netlink socket");
+        return -1;
+    }
+    
+    // Setup request buffer
+    char buf[NLMSG_SPACE(sizeof(struct ndmsg)) + RTA_SPACE(sizeof(struct in6_addr))];
+    memset(buf, 0, sizeof(buf));
+    
+    // Setup netlink header
+    struct nlmsghdr *nlh = (struct nlmsghdr *)buf;
+    nlh->nlmsg_len = NLMSG_LENGTH(sizeof(struct ndmsg));
+    nlh->nlmsg_type = RTM_NEWNEIGH;
+    nlh->nlmsg_flags = NLM_F_REQUEST | NLM_F_REPLACE;
+    nlh->nlmsg_seq = 1;
+    nlh->nlmsg_pid = getpid();
+    
+    // Setup ndmsg structure
+    struct ndmsg *ndm = NLMSG_DATA(nlh);
+    ndm->ndm_family = AF_INET6;
+    ndm->ndm_ifindex = if_nametoindex(interface);
+    ndm->ndm_state = NUD_PERMANENT;
+    ndm->ndm_flags = NTF_PROXY;  // Set NTF_PROXY flag to have us respond
+    ndm->ndm_type = 0;
+    
+    // Add destination address attribute
+    struct rtattr *rta = (struct rtattr *)(((char *)ndm) + sizeof(struct ndmsg));
+    rta->rta_type = NDA_DST;
+    rta->rta_len = RTA_LENGTH(sizeof(struct in6_addr));
+    memcpy(RTA_DATA(rta), &hi->gateway_ip, sizeof(struct in6_addr));
+    
+    // Update nlh->nlmsg_len to include the attribute
+    nlh->nlmsg_len = NLMSG_ALIGN(nlh->nlmsg_len) + RTA_LENGTH(sizeof(struct in6_addr));
+    
+    // Send the message
+    struct sockaddr_nl nladdr;
+    memset(&nladdr, 0, sizeof(nladdr));
+    nladdr.nl_family = AF_NETLINK;
+    
+    struct iovec iov = { buf, nlh->nlmsg_len };
+    struct msghdr msg = {
+        &nladdr, sizeof(nladdr),
+        &iov, 1,
+        NULL, 0,
+        0
+    };
+    
+    if (sendmsg(sock, &msg, 0) < 0) {
+        perror("Failed to send netlink message");
+        close(sock);
+        return -1;
+    }
+    
+    printf("Set gateway neighbor entry to NOARP/PROXY for %s\n", gw_str);
+    close(sock);
     
     return 0;
 }

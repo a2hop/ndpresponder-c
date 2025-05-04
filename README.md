@@ -61,6 +61,8 @@ Options:
   -i, --interface INTERFACE  Uplink network interface
   -n, --subnet SUBNET        Static target subnet (IPv6/mask)
   -N, --docker-network NAME  Docker network name
+  -p, --proactive            Proactively announce IPs at startup
+  -v, --verbose              Enable verbose output
   -c, --config FILE          Path to configuration file
   -h, --help                 Show this help message
 ```
@@ -79,6 +81,12 @@ Options:
 
 # Use a configuration file
 ./ndpresponder -c /path/to/config/file
+
+# Enable verbose logging
+./ndpresponder -i eth0 -n 2001:db8:1::/64 -v
+
+# Proactively announce IPs at startup with verbose output
+./ndpresponder -i eth0 -n 2001:db8:1::/64 -p -v
 ```
 
 ## Implementation Details
