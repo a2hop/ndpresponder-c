@@ -36,7 +36,6 @@ sudo apt-get install build-essential pkg-config libpcap-dev libnet1-dev
 
 ## Build Status
 
-[![Build Status](https://github.com/zimma/ndpresponder-c/actions/workflows/main.yml/badge.svg)](https://github.com/zimma/ndpresponder-c/actions/workflows/main.yml)
 [![Latest Release](https://img.shields.io/github/v/release/zimma/ndpresponder-c)](https://github.com/zimma/ndpresponder-c/releases/latest)
 
 ## Running
