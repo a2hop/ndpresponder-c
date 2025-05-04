@@ -39,13 +39,17 @@ jobs:
         cp ndpresponder artifacts/
         cp LICENSE artifacts/ || echo "No LICENSE file found"
         cp README.md artifacts/ || echo "No README.md file found"
+        # Copy the raw binary separately
+        cp ndpresponder artifacts/ndpresponder-linux-amd64
         cd artifacts && tar -czvf ndpresponder-linux-amd64.tar.gz *
       
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4
       with:
         name: ndpresponder-artifacts
-        path: artifacts/ndpresponder-linux-amd64.tar.gz
+        path: |
+          artifacts/ndpresponder-linux-amd64.tar.gz
+          artifacts/ndpresponder-linux-amd64
         
   release:
     needs: build
@@ -62,7 +66,9 @@ jobs:
       id: create_release
       uses: softprops/action-gh-release@v1
       with:
-        files: ndpresponder-linux-amd64.tar.gz
+        files: |
+          ndpresponder-linux-amd64.tar.gz
+          ndpresponder-linux-amd64
         draft: false
         prerelease: false
         generate_release_notes: true
@@ -98,7 +104,9 @@ jobs:
       uses: softprops/action-gh-release@v1
       with:
         tag_name: ${{ steps.latest_release.outputs.latest_tag }}
-        files: ndpresponder-linux-amd64.tar.gz
+        files: |
+          ndpresponder-linux-amd64.tar.gz
+          ndpresponder-linux-amd64
         draft: false
         prerelease: false
       env:
