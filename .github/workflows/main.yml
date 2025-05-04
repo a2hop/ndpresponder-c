@@ -22,8 +22,9 @@ jobs:
 
     - name: Build project
       run: |
-        make
-        strip ndpresponder
+        chmod +x build.sh
+        ./build.sh
+        strip ndpresponder || echo "Unable to strip binary"
         
     - name: Create artifacts directory
       run: mkdir -p artifacts
