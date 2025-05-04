@@ -34,10 +34,6 @@ sudo apt-get install build-essential pkg-config libpcap-dev libnet1-dev
 ./build.sh
 ```
 
-## Build Status
-
-[![Latest Release](https://img.shields.io/github/v/release/a2hop/ndpresponder-c)](https://github.com/a2hop/ndpresponder-c/releases/latest)
-
 ## Running
 
 This program requires root privileges or the CAP_NET_RAW capability to capture and send network packets.
