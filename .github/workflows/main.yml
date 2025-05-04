@@ -147,45 +147,45 @@ jobs:
       run: |
         # Only update if we have stats
         if [ -n "${{ steps.repo_stats.outputs.release_count }}" ]; then
-          # Create temporary file with updated stats
-          cat > README_STATS.md << EOF
-        ## Build Information
-        
-        | Metric | Value |
-        |--------|-------|
-        | Total Releases | ${{ steps.repo_stats.outputs.release_count }} |
-        | Last Updated | ${{ steps.repo_stats.outputs.last_commit }} |
-        | Binary Size | ${{ steps.repo_stats.outputs.binary_size }} |
-        | Build Status | [![Build Status](https://github.com/${{ github.repository }}/actions/workflows/main.yml/badge.svg)](https://github.com/${{ github.repository }}/actions) |
-        EOF
+          # Create a clean build info section
+          BUILD_INFO=$(cat <<EOF
+## Build Status
+
+[![Build Status](https://github.com/${{ github.repository }}/actions/workflows/main.yml/badge.svg)](https://github.com/${{ github.repository }}/actions/workflows/main.yml)
+[![Latest Release](https://img.shields.io/github/v/release/${{ github.repository }})](https://github.com/${{ github.repository }}/releases/latest)
+
+EOF
+)
           
-          # Check if build info section exists
-          if grep -q "## Build Information" README.md; then
-            # Replace existing section
-            sed -i '/## Build Information/,/^##/c\
-        ## Build Information\
-        \
-        | Metric | Value |\
-        |--------|-------|\
-        | Total Releases | ${{ steps.repo_stats.outputs.release_count }} |\
-        | Last Updated | ${{ steps.repo_stats.outputs.last_commit }} |\
-        | Binary Size | ${{ steps.repo_stats.outputs.binary_size }} |\
-        | Build Status | [![Build Status](https://github.com/${{ github.repository }}/actions/workflows/main.yml/badge.svg)](https://github.com/${{ github.repository }}/actions) |\
-        \
-        ##' README.md
+          # Check if "Build Status" section exists and replace it
+          if grep -q "## Build Status" README.md; then
+            # Create a new file with the updated content
+            awk 'BEGIN{p=1} /^## Build Status/{p=0} /^##/{if(p==0)p=1} {if(p==1)print}' README.md > README.tmp
+            # Split the file at the first occurrence of a heading after title
+            csplit README.tmp '/^##/' 1 > /dev/null || echo "Only one section found"
+            if [ -f xx00 ] && [ -f xx01 ]; then
+              # Combine with our build info
+              cat xx00 > README.new
+              echo "$BUILD_INFO" >> README.new
+              cat xx01 >> README.new
+              mv README.new README.md
+            else
+              # Handle case with only one section
+              echo "$BUILD_INFO" > build_section.tmp
+              sed -i '/^## Build Status/,/^$/d' README.md
+              sed -i "/^# /a\\
+\\
+$BUILD_INFO" README.md
+            fi
           else
-            # Insert before first ## after the title
-            sed -i '0,/^# /!{0,/^## /{s/^## /## Build Information\
-        \
-        | Metric | Value |\
-        |--------|-------|\
-        | Total Releases | ${{ steps.repo_stats.outputs.release_count }} |\
-        | Last Updated | ${{ steps.repo_stats.outputs.last_commit }} |\
-        | Binary Size | ${{ steps.repo_stats.outputs.binary_size }} |\
-        | Build Status | [![Build Status](https://github.com/${{ github.repository }}/actions/workflows/main.yml/badge.svg)](https://github.com/${{ github.repository }}/actions) |\
-        \
-        ## /}}' README.md
+            # Insert at the beginning after the title section
+            sed -i "/^# /a\\
+\\
+$BUILD_INFO" README.md
           fi
+          
+          # Clean up temp files
+          rm -f xx00 xx01 README.tmp README.new build_section.tmp 2>/dev/null || true
         fi
         
     - name: Commit README changes
