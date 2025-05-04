@@ -21,8 +21,8 @@ static char *subnet_list[MAX_SUBNETS];
 static int subnet_count = 0;
 static char *docker_networks[MAX_DOCKER_NETWORKS];
 static int docker_network_count = 0;
-static int proactive_mode = 0;  // Option for proactive mode
-static int verbose_mode = 0;    // New option for verbose output
+static int proactive_mode = 0;  
+static int verbose_mode = 0;    
 
 // Add struct to store both the IP address and prefix length
 typedef struct {

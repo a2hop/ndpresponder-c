@@ -1,0 +1,13 @@
+[Unit]
+Description=NDP Responder Service for %I
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/ndpresponder %I
+User=root
+Group=root
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
