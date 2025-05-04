@@ -34,6 +34,21 @@ sudo apt-get install build-essential pkg-config libpcap-dev libnet1-dev
 ./build.sh
 ```
 
+## Build Status
+
+[![Build and Update Release](https://github.com/zimma/ndpresponder-c/actions/workflows/main.yml/badge.svg)](https://github.com/zimma/ndpresponder-c/actions/workflows/main.yml)
+
+### Latest Release
+[![Latest Release](https://img.shields.io/github/v/release/zimma/ndpresponder-c)](https://github.com/zimma/ndpresponder-c/releases/latest)
+[![GitHub Release Date](https://img.shields.io/github/release-date/zimma/ndpresponder-c)](https://github.com/zimma/ndpresponder-c/releases/latest)
+[![GitHub all releases](https://img.shields.io/github/downloads/zimma/ndpresponder-c/total)](https://github.com/zimma/ndpresponder-c/releases)
+
+### Repository Stats
+[![GitHub issues](https://img.shields.io/github/issues/zimma/ndpresponder-c)](https://github.com/zimma/ndpresponder-c/issues)
+[![GitHub license](https://img.shields.io/github/license/zimma/ndpresponder-c)](https://github.com/zimma/ndpresponder-c/blob/main/LICENSE)
+[![GitHub stars](https://img.shields.io/github/stars/zimma/ndpresponder-c)](https://github.com/zimma/ndpresponder-c/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/zimma/ndpresponder-c)](https://github.com/zimma/ndpresponder-c/network/members)
+
 ## Running
 
 This program requires root privileges or the CAP_NET_RAW capability to capture and send network packets.

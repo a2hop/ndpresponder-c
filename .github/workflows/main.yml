@@ -36,20 +36,14 @@ jobs:
         
     - name: Package artifact
       run: |
-        cp ndpresponder artifacts/
-        cp LICENSE artifacts/ || echo "No LICENSE file found"
-        cp README.md artifacts/ || echo "No README.md file found"
-        # Copy the raw binary separately
+        # Copy only the raw binary
         cp ndpresponder artifacts/ndpresponder-linux-amd64
-        cd artifacts && tar -czvf ndpresponder-linux-amd64.tar.gz *
       
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4
       with:
         name: ndpresponder-artifacts
-        path: |
-          artifacts/ndpresponder-linux-amd64.tar.gz
-          artifacts/ndpresponder-linux-amd64
+        path: artifacts/ndpresponder-linux-amd64
         
   release:
     needs: build
@@ -66,9 +60,7 @@ jobs:
       id: create_release
       uses: softprops/action-gh-release@v1
       with:
-        files: |
-          ndpresponder-linux-amd64.tar.gz
-          ndpresponder-linux-amd64
+        files: ndpresponder-linux-amd64
         draft: false
         prerelease: false
         generate_release_notes: true
@@ -110,10 +102,95 @@ jobs:
       uses: softprops/action-gh-release@v1
       with:
         tag_name: ${{ steps.latest_release.outputs.latest_tag }}
-        files: |
-          ndpresponder-linux-amd64.tar.gz
-          ndpresponder-linux-amd64
+        files: ndpresponder-linux-amd64
         draft: false
         prerelease: false
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        
+  update-readme:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Get repository stats
+      id: repo_stats
+      run: |
+        # Get release count
+        RELEASE_COUNT=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          "https://api.github.com/repos/${{ github.repository }}/releases" | jq length)
+        echo "release_count=$RELEASE_COUNT" >> $GITHUB_OUTPUT
+        
+        # Get last commit date
+        LAST_COMMIT=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          "https://api.github.com/repos/${{ github.repository }}/commits/main" | \
+          jq -r '.commit.committer.date' | cut -dT -f1)
+        echo "last_commit=$LAST_COMMIT" >> $GITHUB_OUTPUT
+        
+        # Get binary size from latest artifact
+        SIZE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          "https://api.github.com/repos/${{ github.repository }}/releases/latest" | \
+          jq -r '.assets[] | select(.name=="ndpresponder-linux-amd64") | .size')
+        if [ -n "$SIZE" ] && [ "$SIZE" != "null" ]; then
+          SIZE_KB=$((SIZE / 1024))
+          echo "binary_size=${SIZE_KB}KB" >> $GITHUB_OUTPUT
+        else
+          echo "binary_size=Unknown" >> $GITHUB_OUTPUT
+        fi
+      continue-on-error: true
+        
+    - name: Update README
+      run: |
+        # Only update if we have stats
+        if [ -n "${{ steps.repo_stats.outputs.release_count }}" ]; then
+          # Create temporary file with updated stats
+          cat > README_STATS.md << EOF
+        ## Build Information
+        
+        | Metric | Value |
+        |--------|-------|
+        | Total Releases | ${{ steps.repo_stats.outputs.release_count }} |
+        | Last Updated | ${{ steps.repo_stats.outputs.last_commit }} |
+        | Binary Size | ${{ steps.repo_stats.outputs.binary_size }} |
+        | Build Status | [![Build Status](https://github.com/${{ github.repository }}/actions/workflows/main.yml/badge.svg)](https://github.com/${{ github.repository }}/actions) |
+        EOF
+          
+          # Check if build info section exists
+          if grep -q "## Build Information" README.md; then
+            # Replace existing section
+            sed -i '/## Build Information/,/^##/c\
+        ## Build Information\
+        \
+        | Metric | Value |\
+        |--------|-------|\
+        | Total Releases | ${{ steps.repo_stats.outputs.release_count }} |\
+        | Last Updated | ${{ steps.repo_stats.outputs.last_commit }} |\
+        | Binary Size | ${{ steps.repo_stats.outputs.binary_size }} |\
+        | Build Status | [![Build Status](https://github.com/${{ github.repository }}/actions/workflows/main.yml/badge.svg)](https://github.com/${{ github.repository }}/actions) |\
+        \
+        ##' README.md
+          else
+            # Insert before first ## after the title
+            sed -i '0,/^# /!{0,/^## /{s/^## /## Build Information\
+        \
+        | Metric | Value |\
+        |--------|-------|\
+        | Total Releases | ${{ steps.repo_stats.outputs.release_count }} |\
+        | Last Updated | ${{ steps.repo_stats.outputs.last_commit }} |\
+        | Binary Size | ${{ steps.repo_stats.outputs.binary_size }} |\
+        | Build Status | [![Build Status](https://github.com/${{ github.repository }}/actions/workflows/main.yml/badge.svg)](https://github.com/${{ github.repository }}/actions) |\
+        \
+        ## /}}' README.md
+          fi
+        fi
+        
+    - name: Commit README changes
+      uses: EndBug/add-and-commit@v9
+      with:
+        add: 'README.md'
+        message: 'Update build statistics in README [skip ci]'
+        default_author: github_actions
