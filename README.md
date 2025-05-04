@@ -18,11 +18,15 @@ This is a C implementation of an IPv6 Neighbor Discovery Protocol responder. It'
 
 ## Requirements
 
-- libpcap
-- libnet
+- libpcap, libnet1
 - Linux (uses netlink for host information gathering)
 - Root privileges or CAP_NET_RAW capability
 - Build tools: gcc/clang, make, pkg-config
+
+```bash
+# Install to run (Debian/Ubuntu)
+sudo apt-get install libnet1
+```
 
 ## Building
 
