@@ -43,6 +43,10 @@ typedef struct {
 static ip_prefix_t target_subnets[MAX_SUBNETS];
 static int target_subnet_count = 0;
 
+// Add excluded subnets array
+static ip_prefix_t excluded_subnets[MAX_SUBNETS];
+static int excluded_subnet_count = 0;
+
 // Function to allow external modules to check if verbose mode is enabled
 int check_verbose_mode(void) {
     return verbose_mode;
@@ -110,6 +114,16 @@ static int is_in_target_subnets(const struct in6_addr *ip) {
     return 0;
 }
 
+// Function to check if an IP is in excluded subnets
+static int is_in_excluded_subnets(const struct in6_addr *ip) {
+    for (int i = 0; i < excluded_subnet_count; i++) {
+        if (ip_in_subnet(ip, &excluded_subnets[i].addr, excluded_subnets[i].prefix_len)) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 // Enhanced signal handler for graceful shutdown
 static void handle_signal(int sig) {
     char *sig_name = NULL;
@@ -143,6 +157,12 @@ static void process_solicitation(neigh_solicitation_t *ns) {
     ns_to_string(ns, ns_str, sizeof(ns_str));
     inet_ntop(AF_INET6, &ns->target_ip, target_ip_str, sizeof(target_ip_str));
     inet_ntop(AF_INET6, &ns->router_ip, router_ip_str, sizeof(router_ip_str));
+    
+    // Check if IP is in excluded subnets first
+    if (is_in_excluded_subnets(&ns->target_ip)) {
+        verbose_log("Ignoring solicitation for %s (excluded subnet) from %s\n", target_ip_str, router_ip_str);
+        return;
+    }
     
     // Check if we should respond
     if (docker_contains_ip(&ns->target_ip)) {
@@ -270,6 +290,49 @@ static int parse_config_file(const char *filename) {
             if (*value && subnet_count < MAX_SUBNETS) {
                 subnet_list[subnet_count++] = strdup(value);
                 verbose_log("Config: Added subnet %s\n", value);
+            }
+            continue;
+        }
+
+        // Process "nix" lines - add excluded subnet
+        if (strncmp(line, "nix", 3) == 0 && isspace(line[3])) {
+            value = line + 3;
+            while (isspace(*value)) value++;
+            
+            if (*value && excluded_subnet_count < MAX_SUBNETS) {
+                char *subnet_str = strdup(value);
+                if (!subnet_str) {
+                    fprintf(stderr, "Failed to allocate memory for excluded subnet\n");
+                    continue;
+                }
+                
+                char *slash = strchr(subnet_str, '/');
+                int prefix_len = 128; // Default to /128 if no prefix is specified
+                
+                if (slash) {
+                    *slash = '\0';  // Temporarily remove prefix length
+                    prefix_len = atoi(slash + 1);
+                    
+                    if (prefix_len < 0 || prefix_len > 128) {
+                        fprintf(stderr, "Invalid prefix length in excluded subnet %s, using /128\n", value);
+                        prefix_len = 128;
+                    }
+                }
+                
+                if (inet_pton(AF_INET6, subnet_str, &excluded_subnets[excluded_subnet_count].addr) != 1) {
+                    fprintf(stderr, "Invalid IPv6 excluded subnet: %s\n", value);
+                } else {
+                    excluded_subnets[excluded_subnet_count].prefix_len = prefix_len;
+                    
+                    char ip_str[INET6_ADDRSTRLEN];
+                    inet_ntop(AF_INET6, &excluded_subnets[excluded_subnet_count].addr, ip_str, sizeof(ip_str));
+                    printf("Added excluded subnet: %s/%d\n", ip_str, prefix_len);
+                    
+                    excluded_subnet_count++;
+                }
+                
+                free(subnet_str);
+                verbose_log("Config: Added excluded subnet %s\n", value);
             }
             continue;
         }
@@ -481,6 +544,42 @@ int main(int argc, char *argv[]) {
             printf("Added target subnet: %s/%d\n", ip_str, prefix_len);
             
             target_subnet_count++;
+        }
+        
+        free(subnet_str);
+    }
+    
+    // Parse excluded subnets with prefix lengths
+    for (int i = 0; i < excluded_subnet_count; i++) {
+        char *subnet_str = strdup(subnet_list[i]);
+        if (!subnet_str) {
+            fprintf(stderr, "Failed to allocate memory for excluded subnet\n");
+            continue;
+        }
+        
+        char *slash = strchr(subnet_str, '/');
+        int prefix_len = 128; // Default to /128 if no prefix is specified
+        
+        if (slash) {
+            *slash = '\0';  // Temporarily remove prefix length
+            prefix_len = atoi(slash + 1);
+            
+            if (prefix_len < 0 || prefix_len > 128) {
+                fprintf(stderr, "Invalid prefix length in %s, using /128\n", subnet_list[i]);
+                prefix_len = 128;
+            }
+        }
+        
+        if (inet_pton(AF_INET6, subnet_str, &excluded_subnets[excluded_subnet_count].addr) != 1) {
+            fprintf(stderr, "Invalid IPv6 excluded subnet: %s\n", subnet_list[i]);
+        } else {
+            excluded_subnets[excluded_subnet_count].prefix_len = prefix_len;
+            
+            char ip_str[INET6_ADDRSTRLEN];
+            inet_ntop(AF_INET6, &excluded_subnets[excluded_subnet_count].addr, ip_str, sizeof(ip_str));
+            printf("Added excluded subnet: %s/%d\n", ip_str, prefix_len);
+            
+            excluded_subnet_count++;
         }
         
         free(subnet_str);

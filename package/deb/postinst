@@ -1,0 +1,51 @@
+#!/bin/bash
+set -e
+
+case "$1" in
+    configure)
+        # Check if this is an upgrade and collect running services
+        RUNNING_INSTANCES=()
+        if [ -n "$2" ]; then
+            # This is an upgrade ($2 contains the old version)
+            for config in /etc/ndpresponder/*; do
+                if [ -f "$config" ]; then
+                    instance=$(basename "$config")
+                    
+                    # Skip example configuration
+                    if [[ "$instance" == *example* ]]; then
+                        continue
+                    fi
+                    
+                    # Check if this instance was running
+                    if systemctl is-active --quiet "ndpresponder@$instance" 2>/dev/null; then
+                        RUNNING_INSTANCES+=("$instance")
+                    fi
+                fi
+            done
+        fi
+
+        # Start or restart service based on context
+        if [ ${#RUNNING_INSTANCES[@]} -gt 0 ]; then
+            echo "Restarting ndpresponder services..."
+            for instance in "${RUNNING_INSTANCES[@]}"; do
+                systemctl restart "ndpresponder@$instance" >/dev/null 2>&1
+                if [ $? -ne 0 ]; then
+                    echo "Warning: Failed to restart ndpresponder@$instance" >&2
+                fi
+            done
+        elif [ -z "$2" ]; then
+            # Fresh installation - don't start automatically
+            echo "ndpresponder installed successfully."
+        fi
+    ;;
+
+    abort-upgrade|abort-remove|abort-deconfigure)
+    ;;
+
+    *)
+        echo "postinst called with unknown argument \`$1'" >&2
+        exit 1
+    ;;
+esac
+
+exit 0

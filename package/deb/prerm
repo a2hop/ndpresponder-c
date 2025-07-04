@@ -1,0 +1,18 @@
+#!/bin/bash
+set -e
+
+# Only stop service on removal, not on upgrade
+if [ "$1" = "remove" ]; then
+    echo "Stopping ndpresponder service instances..."
+    
+    # Stop and disable all running instances
+    for instance in $(systemctl list-units --type=service --state=active 'ndpresponder@*' --no-legend | cut -d' ' -f1); do
+        echo "Stopping $instance..."
+        systemctl stop "$instance" || true
+        systemctl disable "$instance" || true
+    done
+    
+    # Also try to stop the default instance if it exists
+    systemctl stop ndpresponder@nd0 || true
+    systemctl disable ndpresponder@nd0 || true
+fi

@@ -1,0 +1,25 @@
+[Unit]
+Description=IPv6 Neighbor Discovery Protocol Responder (%i)
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/ndpresponder -c /etc/ndpresponder/%i
+Restart=always
+RestartSec=10
+User=root
+Group=root
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/log
+
+# Capabilities
+CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN
+AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN
+
+[Install]
+WantedBy=multi-user.target

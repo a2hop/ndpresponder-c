@@ -5,9 +5,10 @@ It's a C reimplementation of [yoursunny/ndpresponder](https://github.com/yoursun
 ## Features
 
 - Responds to ICMPv6 neighbor solicitations for configured IPv6 subnets
+- Supports excluded subnets that will not be responded to (using "nix" prefix)
 - Monitors Docker containers and automatically responds for their IPv6 addresses
 - Sends gratuitous neighbor advertisements for new Docker container IPs
-- Configurable via command-line arguments
+- Configurable via command-line arguments or configuration file
 
 ## Improvements Over Original
 
@@ -16,6 +17,7 @@ It's a C reimplementation of [yoursunny/ndpresponder](https://github.com/yoursun
 - Added extra functionality while maintaining core features
 - Eliminated bloat for a more efficient implementation
 - Native C implementation for better performance
+- Support for excluded subnets
 
 ## Requirements
 
@@ -68,6 +70,41 @@ Options:
   -h, --help                 Show this help message
 ```
 
+## Configuration File
+
+The configuration file supports the following directives:
+
+- `link INTERFACE` - Set the network interface
+- `net SUBNET` - Add a subnet to respond for (IPv6/prefix)
+- `nix SUBNET` - Add an excluded subnet (will not respond for these IPs)
+- `docker NETWORK` - Add a Docker network to monitor
+- `proactive` - Enable proactive announcements at startup
+- `verbose` - Enable verbose output
+
+### Example Configuration
+
+```
+# Network interface to use
+link bri1
+
+# IPv6 subnets to respond for
+net 2001:db8:1:2::100/120
+net 2001:db8:3:4::abc/128
+net fd00:1234:5678:9abc::42/128
+
+# Excluded subnets (will not respond for these)
+nix 2001:db8:5:7::def/112
+
+# Docker networks to monitor (optional)
+docker my_docker_network
+
+# Enable proactive announcements at startup
+proactive
+
+# Enable verbose output
+verbose
+```
+
 ## Examples
 
 ```bash
@@ -97,4 +134,14 @@ This implementation uses:
 - libnet for packet creation
 - netlink for host information gathering
 - system commands to interface with Docker
+
+## Excluded Subnets
+
+The "nix" prefix allows you to specify subnets that should be excluded from responses. This is useful when you want to respond for a large subnet but exclude certain ranges within it. Excluded subnets are checked first, so they take precedence over included subnets.
+
+For example:
+```
+net 2001:db8::/32          # Respond for entire /32
+nix 2001:db8:1::/48        # But exclude this /48 within it
+```
 

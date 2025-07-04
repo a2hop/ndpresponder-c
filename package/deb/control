@@ -1,0 +1,15 @@
+Package: ndpresponder
+Section: net
+Priority: optional
+Architecture: amd64
+Maintainer: Lucas Kafarski
+Description: IPv6 Neighbor Discovery Protocol Responder
+ A high-performance C implementation of an IPv6 NDP responder that handles
+ neighbor solicitations for configured subnets and Docker containers.
+ .
+ Features include support for excluded subnets, Docker container monitoring,
+ gratuitous neighbor advertisements, and configurable response policies.
+ The implementation is optimized for low memory usage and high performance.
+Depends: libnet1
+Recommends: iputils-ping
+Homepage: https://github.com/a2hop/ndpresponder-c
