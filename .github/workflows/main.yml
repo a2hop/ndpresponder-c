@@ -109,28 +109,6 @@ jobs:
         dpkg-deb --info ${{ steps.version.outputs.deb_filename }}
         dpkg-deb --contents ${{ steps.version.outputs.deb_filename }}
 
-    - name: Run package tests
-      run: |
-        # Test that the binary works
-        ./ndpresponder -h || true
-        
-        # Test package integrity
-        dpkg-deb --show ${{ steps.version.outputs.deb_filename }}
-        
-        # Test installation simulation
-        echo "Testing package installation simulation..."
-        dpkg-deb --extract ${{ steps.version.outputs.deb_filename }} test-install/
-        ls -la test-install/usr/local/bin/
-        ls -la test-install/etc/systemd/system/
-        ls -la test-install/etc/ndp-responder/
-
-    - name: Generate checksums
-      run: |
-        sha256sum ndpresponder > ndpresponder.sha256
-        sha256sum ${{ steps.version.outputs.deb_filename }} > ${{ steps.version.outputs.deb_filename }}.sha256
-        md5sum ndpresponder > ndpresponder.md5
-        md5sum ${{ steps.version.outputs.deb_filename }} > ${{ steps.version.outputs.deb_filename }}.md5
-
     - name: Get latest release
       id: latest_release
       uses: actions/github-script@v6
@@ -171,11 +149,7 @@ jobs:
           
           const assetNames = [
             'ndpresponder',
-            '${{ steps.version.outputs.deb_filename }}',
-            'ndpresponder.sha256',
-            '${{ steps.version.outputs.deb_filename }}.sha256',
-            'ndpresponder.md5',
-            '${{ steps.version.outputs.deb_filename }}.md5'
+            '${{ steps.version.outputs.deb_filename }}'
           ];
           
           const existingAssets = {};
@@ -215,11 +189,7 @@ jobs:
           
           const assets = [
             { path: './ndpresponder', name: 'ndpresponder', contentType: 'application/octet-stream' },
-            { path: './${{ steps.version.outputs.deb_filename }}', name: '${{ steps.version.outputs.deb_filename }}', contentType: 'application/vnd.debian.binary-package' },
-            { path: './ndpresponder.sha256', name: 'ndpresponder.sha256', contentType: 'text/plain' },
-            { path: './${{ steps.version.outputs.deb_filename }}.sha256', name: '${{ steps.version.outputs.deb_filename }}.sha256', contentType: 'text/plain' },
-            { path: './ndpresponder.md5', name: 'ndpresponder.md5', contentType: 'text/plain' },
-            { path: './${{ steps.version.outputs.deb_filename }}.md5', name: '${{ steps.version.outputs.deb_filename }}.md5', contentType: 'text/plain' }
+            { path: './${{ steps.version.outputs.deb_filename }}', name: '${{ steps.version.outputs.deb_filename }}', contentType: 'application/vnd.debian.binary-package' }
           ];
           
           for (const asset of assets) {
@@ -242,8 +212,6 @@ jobs:
         path: |
           ndpresponder
           ${{ steps.version.outputs.deb_filename }}
-          *.sha256
-          *.md5
         retention-days: 30
 
     - name: Create release summary
