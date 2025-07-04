@@ -1,4 +1,5 @@
 Package: ndpresponder
+Version: 1.0.0
 Section: net
 Priority: optional
 Architecture: amd64
