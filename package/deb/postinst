@@ -3,6 +3,9 @@ set -e
 
 case "$1" in
     configure)
+        # Reload systemd daemon to pick up new service file
+        systemctl daemon-reload || true
+
         # Check if this is an upgrade and collect running services
         RUNNING_INSTANCES=()
         if [ -n "$2" ]; then

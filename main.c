@@ -14,6 +14,9 @@
 #include <unistd.h>
 #include <pcap.h>
 #include <arpa/inet.h>
+#include <errno.h>
+#include <stdarg.h>
+#include <ctype.h>
 #include "ndp.h"
 #include "hostinfo.h"
 #include "docker.h"
@@ -549,41 +552,8 @@ int main(int argc, char *argv[]) {
         free(subnet_str);
     }
     
-    // Parse excluded subnets with prefix lengths
-    for (int i = 0; i < excluded_subnet_count; i++) {
-        char *subnet_str = strdup(subnet_list[i]);
-        if (!subnet_str) {
-            fprintf(stderr, "Failed to allocate memory for excluded subnet\n");
-            continue;
-        }
-        
-        char *slash = strchr(subnet_str, '/');
-        int prefix_len = 128; // Default to /128 if no prefix is specified
-        
-        if (slash) {
-            *slash = '\0';  // Temporarily remove prefix length
-            prefix_len = atoi(slash + 1);
-            
-            if (prefix_len < 0 || prefix_len > 128) {
-                fprintf(stderr, "Invalid prefix length in %s, using /128\n", subnet_list[i]);
-                prefix_len = 128;
-            }
-        }
-        
-        if (inet_pton(AF_INET6, subnet_str, &excluded_subnets[excluded_subnet_count].addr) != 1) {
-            fprintf(stderr, "Invalid IPv6 excluded subnet: %s\n", subnet_list[i]);
-        } else {
-            excluded_subnets[excluded_subnet_count].prefix_len = prefix_len;
-            
-            char ip_str[INET6_ADDRSTRLEN];
-            inet_ntop(AF_INET6, &excluded_subnets[excluded_subnet_count].addr, ip_str, sizeof(ip_str));
-            printf("Added excluded subnet: %s/%d\n", ip_str, prefix_len);
-            
-            excluded_subnet_count++;
-        }
-        
-        free(subnet_str);
-    }
+    // Note: Excluded subnets are already parsed in parse_config_file()
+    // No need to parse them again here
     
     // Initialize Docker if needed
     if (docker_network_count > 0) {
