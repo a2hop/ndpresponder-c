@@ -44,7 +44,7 @@ jobs:
           fi
         fi
         echo "version=$VERSION" >> $GITHUB_OUTPUT
-        echo "deb_filename=ndp-responder-${VERSION}_amd64.deb" >> $GITHUB_OUTPUT
+        echo "deb_filename=ndp_responder_${VERSION}_amd64.deb" >> $GITHUB_OUTPUT
         echo "Building version: $VERSION"
       
     - name: Install dependencies
