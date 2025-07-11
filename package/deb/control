@@ -11,6 +11,6 @@ Description: IPv6 Neighbor Discovery Protocol Responder
  Features include support for excluded subnets, Docker container monitoring,
  gratuitous neighbor advertisements, and configurable response policies.
  The implementation is optimized for low memory usage and high performance.
-Depends: libnet1
+Depends: libnet1, libpcap0.8
 Recommends: iputils-ping
 Homepage: https://github.com/a2hop/ndpresponder-c
