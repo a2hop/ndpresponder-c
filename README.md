@@ -57,7 +57,7 @@ sudo setcap cap_net_raw+ep ./ndpresponder
 ## Usage
 
 ```
-Usage: ./ndpresponder -i INTERFACE [OPTIONS]
+Usage: ./ndpresponder [OPTIONS]
 IPv6 Neighbor Discovery Protocol Responder
 
 Options:
@@ -65,8 +65,12 @@ Options:
   -n, --subnet SUBNET        Static target subnet (IPv6/mask)
   -N, --docker-network NAME  Docker network name
   -p, --proactive            Proactively announce IPs at startup
+  -c, --config FILE          Read configuration from FILE
+  -t, --pcap-timeout MS      PCap timeout in milliseconds (default: 5)
+                             Can also be set in config file with 'timeout MS'
+  -d, --dedup-window MS      Deduplication window in milliseconds (default: 100)
+                             Can also be set in config file with 'dedup MS'
   -v, --verbose              Enable verbose output
-  -c, --config FILE          Path to configuration file
   -h, --help                 Show this help message
 ```
 
@@ -78,6 +82,8 @@ The configuration file supports the following directives:
 - `net SUBNET` - Add a subnet to respond for (IPv6/prefix)
 - `nix SUBNET` - Add an excluded subnet (will not respond for these IPs)
 - `docker NETWORK` - Add a Docker network to monitor
+- `timeout MS` - Set PCap timeout in milliseconds (default: 5)
+- `dedup MS` - Set deduplication window in milliseconds (default: 100)
 - `proactive` - Enable proactive announcements at startup
 - `verbose` - Enable verbose output
 
@@ -97,6 +103,12 @@ nix 2001:db8:5:7::def/112
 
 # Docker networks to monitor (optional)
 docker my_docker_network
+
+# PCap timeout in milliseconds (default: 5)
+# timeout 5
+
+# Deduplication window in milliseconds (default: 100)
+# dedup 100
 
 # Enable proactive announcements at startup
 proactive
@@ -125,6 +137,15 @@ verbose
 
 # Proactively announce IPs at startup with verbose output
 ./ndpresponder -i eth0 -n 2001:db8:1::/64 -p -v
+
+# Tune timing parameters for fast networks
+./ndpresponder -i eth0 -n 2001:db8:1::/64 -t 3 -d 50
+
+# Tune timing parameters for slow networks
+./ndpresponder -i eth0 -n 2001:db8:1::/64 -t 10 -d 200
+
+# Use config file and override dedup window from command-line
+./ndpresponder -c /etc/ndpresponder/config.conf -d 75
 ```
 
 ## Implementation Details
@@ -144,4 +165,35 @@ For example:
 net 2001:db8::/32          # Respond for entire /32
 nix 2001:db8:1::/48        # But exclude this /48 within it
 ```
+
+## Performance Tuning
+
+The NDP responder includes configurable timing parameters to optimize performance for different network conditions:
+
+### PCap Timeout (`-t, --pcap-timeout`)
+Controls how long the packet capture waits before checking for new packets (default: 5ms).
+- **Lower values (1-3ms)**: Faster response but higher CPU usage - good for low-latency networks
+- **Default (5ms)**: Balanced performance for most networks
+- **Higher values (10ms+)**: Lower CPU usage - good for high-latency or slow networks
+
+### Deduplication Window (`-d, --dedup-window`)
+Controls how long to remember recent solicitations for deduplication (default: 100ms).
+- **Lower values (50ms)**: Minimal filtering, more responsive - good for high-speed networks
+- **Default (100ms)**: Balanced deduplication - matches typical TCP retransmit timings
+- **Higher values (150-200ms)**: Aggressive filtering - good for burst protection
+
+### Tuning Examples
+
+```bash
+# High-speed data center (aggressive dedup, fast response)
+./ndpresponder -i eth0 -t 3 -d 50 -n target/mask
+
+# Standard network (balanced defaults)
+./ndpresponder -i eth0 -t 5 -d 100 -n target/mask
+
+# Slow or high-latency network (conservative)
+./ndpresponder -i eth0 -t 10 -d 200 -n target/mask
+```
+
+Both parameters can also be set in the configuration file or overridden from the command-line.
 

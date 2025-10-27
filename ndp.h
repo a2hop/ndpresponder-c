@@ -1,6 +1,8 @@
 #ifndef NDP_H
 #define NDP_H
 
+#include <sys/types.h>
+#include <stdint.h>
 #include <pcap.h>
 #include <libnet.h>
 #include <netinet/in.h>

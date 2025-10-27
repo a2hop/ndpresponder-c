@@ -7,16 +7,22 @@
  * License are met.
  */
 
+#define _DEFAULT_SOURCE
+#define _POSIX_C_SOURCE 200112L
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <signal.h>
 #include <unistd.h>
-#include <pcap.h>
-#include <arpa/inet.h>
+#include <time.h>
+#include <signal.h>
 #include <errno.h>
-#include <stdarg.h>
 #include <ctype.h>
+#include <stdarg.h>
+#include <stdint.h>
+#include <sys/types.h>
+#include <arpa/inet.h>
+#include <pcap.h>
 #include "ndp.h"
 #include "hostinfo.h"
 #include "docker.h"
@@ -24,6 +30,9 @@
 #define MAX_SUBNETS 64
 #define MAX_DOCKER_NETWORKS 64
 #define PACKET_BUFFER_SIZE 2048
+#define MAX_DEDUP_ENTRIES 512
+#define DEFAULT_DEDUP_WINDOW_MS 100
+#define DEFAULT_PCAP_TIMEOUT_MS 5
 
 static pcap_t *pcap_handle = NULL;
 static int running = 1;
@@ -34,7 +43,20 @@ static int subnet_count = 0;
 static char *docker_networks[MAX_DOCKER_NETWORKS];
 static int docker_network_count = 0;
 static int proactive_mode = 0;  
-static int verbose_mode = 0;    
+static int verbose_mode = 0;
+static int pcap_timeout_ms = DEFAULT_PCAP_TIMEOUT_MS;  // Configurable pcap timeout, default 5ms
+static int dedup_window_ms = DEFAULT_DEDUP_WINDOW_MS;  // Configurable dedup window, default 100ms
+
+// Deduplication structure for recent solicitations
+typedef struct {
+    struct in6_addr target_ip;
+    struct in6_addr router_ip;
+    uint64_t timestamp_ms;
+} dedup_entry_t;
+
+static dedup_entry_t dedup_window[MAX_DEDUP_ENTRIES];
+static int dedup_count = 0;
+static uint64_t dedup_last_cleanup_ms = 0;    
 
 // Add struct to store both the IP address and prefix length
 typedef struct {
@@ -63,6 +85,73 @@ static void verbose_log(const char *format, ...) {
         vprintf(format, args);
         va_end(args);
     }
+}
+
+// Get current time in milliseconds
+static uint64_t get_time_ms(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+}
+
+// Cleanup old entries from deduplication window
+static void dedup_cleanup(uint64_t current_time_ms) {
+    int write_pos = 0;
+    
+    // Only cleanup every 50ms to avoid frequent shifting
+    if (current_time_ms - dedup_last_cleanup_ms < 50) {
+        return;
+    }
+    dedup_last_cleanup_ms = current_time_ms;
+    
+    // Remove entries older than dedup_window_ms
+    for (int i = 0; i < dedup_count; i++) {
+        if (current_time_ms - dedup_window[i].timestamp_ms < dedup_window_ms) {
+            if (write_pos != i) {
+                dedup_window[write_pos] = dedup_window[i];
+            }
+            write_pos++;
+        }
+    }
+    dedup_count = write_pos;
+}
+
+// Check if solicitation is a duplicate (within the configured window)
+static int is_solicitation_duplicate(const struct in6_addr *target_ip, 
+                                     const struct in6_addr *router_ip) {
+    uint64_t current_time_ms = get_time_ms();
+    
+    // Cleanup old entries
+    dedup_cleanup(current_time_ms);
+    
+    // Check if we've seen this exact solicitation recently
+    for (int i = 0; i < dedup_count; i++) {
+        if (memcmp(&dedup_window[i].target_ip, target_ip, sizeof(struct in6_addr)) == 0 &&
+            memcmp(&dedup_window[i].router_ip, router_ip, sizeof(struct in6_addr)) == 0 &&
+            current_time_ms - dedup_window[i].timestamp_ms < dedup_window_ms) {
+            verbose_log("Duplicate solicitation detected (within %dms), skipping\n", dedup_window_ms);
+            return 1;
+        }
+    }
+    
+    return 0;
+}
+
+// Record a solicitation in the deduplication window
+static void dedup_record(const struct in6_addr *target_ip, 
+                        const struct in6_addr *router_ip) {
+    if (dedup_count >= MAX_DEDUP_ENTRIES) {
+        // Shift all entries down and discard the oldest
+        for (int i = 0; i < MAX_DEDUP_ENTRIES - 1; i++) {
+            dedup_window[i] = dedup_window[i + 1];
+        }
+        dedup_count = MAX_DEDUP_ENTRIES - 1;
+    }
+    
+    dedup_window[dedup_count].timestamp_ms = get_time_ms();
+    memcpy(&dedup_window[dedup_count].target_ip, target_ip, sizeof(struct in6_addr));
+    memcpy(&dedup_window[dedup_count].router_ip, router_ip, sizeof(struct in6_addr));
+    dedup_count++;
 }
 
 // For essential logs that should always be shown
@@ -160,6 +249,15 @@ static void process_solicitation(neigh_solicitation_t *ns) {
     ns_to_string(ns, ns_str, sizeof(ns_str));
     inet_ntop(AF_INET6, &ns->target_ip, target_ip_str, sizeof(target_ip_str));
     inet_ntop(AF_INET6, &ns->router_ip, router_ip_str, sizeof(router_ip_str));
+    
+    // Check for duplicate solicitation within the last 100ms
+    if (is_solicitation_duplicate(&ns->target_ip, &ns->router_ip)) {
+        verbose_log("Skipping duplicate solicitation for %s from %s\n", target_ip_str, router_ip_str);
+        return;
+    }
+    
+    // Record this solicitation
+    dedup_record(&ns->target_ip, &ns->router_ip);
     
     // Check if IP is in excluded subnets first
     if (is_in_excluded_subnets(&ns->target_ip)) {
@@ -352,6 +450,40 @@ static int parse_config_file(const char *filename) {
             continue;
         }
 
+        // Process "timeout" lines - set pcap timeout in milliseconds
+        if (strncmp(line, "timeout", 7) == 0 && isspace(line[7])) {
+            value = line + 7;
+            while (isspace(*value)) value++;
+            
+            if (*value) {
+                int timeout_val = atoi(value);
+                if (timeout_val < 1) {
+                    fprintf(stderr, "Warning: Invalid timeout value '%s', using default\n", value);
+                } else {
+                    pcap_timeout_ms = timeout_val;
+                    verbose_log("Config: Set pcap timeout to %d ms\n", timeout_val);
+                }
+            }
+            continue;
+        }
+
+        // Process "dedup" lines - set deduplication window in milliseconds
+        if (strncmp(line, "dedup", 5) == 0 && isspace(line[5])) {
+            value = line + 5;
+            while (isspace(*value)) value++;
+            
+            if (*value) {
+                int dedup_val = atoi(value);
+                if (dedup_val < 1) {
+                    fprintf(stderr, "Warning: Invalid dedup value '%s', using default\n", value);
+                } else {
+                    dedup_window_ms = dedup_val;
+                    verbose_log("Config: Set dedup window to %d ms\n", dedup_val);
+                }
+            }
+            continue;
+        }
+
         // Process "proactive" option
         if (strncmp(line, "proactive", 9) == 0) {
             proactive_mode = 1;
@@ -380,6 +512,10 @@ static void print_usage(const char *progname) {
     printf("  -N, --docker-network NAME  Docker network name\n");
     printf("  -p, --proactive            Proactively announce IPs at startup\n");
     printf("  -c, --config FILE          Read configuration from FILE\n");
+    printf("  -t, --pcap-timeout MS      PCap timeout in milliseconds (default: 5)\n");
+    printf("                             Can also be set in config file with 'timeout MS'\n");
+    printf("  -d, --dedup-window MS      Deduplication window in milliseconds (default: 100)\n");
+    printf("                             Can also be set in config file with 'dedup MS'\n");
     printf("  -v, --verbose              Enable verbose output\n");
     printf("  -h, --help                 Show this help message\n");
 }
@@ -419,6 +555,28 @@ static void parse_args(int argc, char *argv[]) {
             if (i + 1 < argc) {
                 if (parse_config_file(argv[i + 1]) < 0) {
                     exit(1);
+                }
+                i += 2;
+            } else {
+                fprintf(stderr, "Error: Missing argument for %s\n", argv[i]);
+                exit(1);
+            }
+        } else if (strcmp(argv[i], "-t") == 0 || strcmp(argv[i], "--pcap-timeout") == 0) {
+            if (i + 1 < argc) {
+                pcap_timeout_ms = atoi(argv[i + 1]);
+                if (pcap_timeout_ms < 1) {
+                    pcap_timeout_ms = 1;  // Minimum 1ms
+                }
+                i += 2;
+            } else {
+                fprintf(stderr, "Error: Missing argument for %s\n", argv[i]);
+                exit(1);
+            }
+        } else if (strcmp(argv[i], "-d") == 0 || strcmp(argv[i], "--dedup-window") == 0) {
+            if (i + 1 < argc) {
+                dedup_window_ms = atoi(argv[i + 1]);
+                if (dedup_window_ms < 1) {
+                    dedup_window_ms = 1;  // Minimum 1ms
                 }
                 i += 2;
             } else {
@@ -568,7 +726,7 @@ int main(int argc, char *argv[]) {
     }
     
     // Set a shorter timeout for pcap to ensure frequent checks of the running flag
-    pcap_handle = pcap_open_live(interface_name, BUFSIZ, 1, 10, errbuf);
+    pcap_handle = pcap_open_live(interface_name, BUFSIZ, 1, pcap_timeout_ms, errbuf);
     if (pcap_handle == NULL) {
         fprintf(stderr, "Failed to open interface %s: %s\n", interface_name, errbuf);
         ndp_cleanup();
@@ -631,7 +789,7 @@ int main(int argc, char *argv[]) {
         }
         
         // Small sleep to prevent CPU hogging
-        usleep(10000);  // 10ms
+        usleep(5000);  // 5ms
     }
     
     // Enhanced cleanup section
